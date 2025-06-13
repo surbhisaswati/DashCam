@@ -1,0 +1,13 @@
+cropped_videos
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+# VSCode config
+.vscode/
+# Environment files
+.env
+*.env
+# Conda virtual env
+env/
+venv/
