@@ -2,7 +2,7 @@ import cv2
 import os
 
 # Input folder containing videos
-input_folder = '/home/smlab/Desktop/dashcam/front'
+input_folder = 'cropped_videos'
 
 # Output folder for all images (flat)
 output_folder = os.path.join(input_folder, 'frames_output')

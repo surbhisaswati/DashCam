@@ -1,4 +1,5 @@
 cropped_videos
+cropped_videos/frame_output
 # Python cache
 __pycache__/
 *.pyc
