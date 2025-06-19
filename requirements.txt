@@ -4,3 +4,6 @@ ultralytics
 pandas
 matplotlib
 numpy
+autodistill
+autodistill-grounded-sam-2
+
