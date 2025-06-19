@@ -1,4 +1,7 @@
 opencv-python
+torch
+torchvision
+torchaudio
 cvzone
 ultralytics
 pandas
