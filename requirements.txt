@@ -1,9 +1,5 @@
 opencv-python
 cvzone
-torch
-torchvision
-torchaudio
-ultralytics
 pandas
 matplotlib
 numpy
@@ -18,3 +14,4 @@ transformers
 roboflow
 scikit-learn
 scipy
+ultralytics
