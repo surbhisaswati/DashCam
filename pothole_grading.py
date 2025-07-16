@@ -48,6 +48,8 @@ def generate_grading_summary(csv_path, output_dir):
     frames_with_potholes = 0
     
     try:
+        # Increase CSV field size limit to handle base64 frame data
+        csv.field_size_limit(50000000)  # 50MB limit for frame data
         with open(csv_path, 'r', encoding='utf-8') as csvfile:
             csv_reader = csv.DictReader(csvfile)
             for row in csv_reader:

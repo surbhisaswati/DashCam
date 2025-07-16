@@ -14,6 +14,8 @@ import os
 import cv2
 import csv
 import glob
+import base64
+import numpy as np
 from yolo_detection import PotholeDetector
 from gps_parser import convert_git_to_data, find_matching_gps
 from pothole_grading import grade_pothole, generate_grading_summary
@@ -161,6 +163,57 @@ def get_gpu_info():
     
     return {'available': False}
 
+def frame_to_base64(frame, quality=85):
+    """
+    Convert frame to base64 encoded string for storage in CSV
+    
+    Args:
+        frame: OpenCV frame (numpy array)
+        quality (int): JPEG compression quality (1-100, higher = better quality)
+    
+    Returns:
+        str: Base64 encoded frame data
+    """
+    try:
+        # Encode frame as JPEG to reduce size
+        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
+        result, encoded_img = cv2.imencode('.jpg', frame, encode_param)
+        
+        if result:
+            # Convert to base64 string
+            frame_data = base64.b64encode(encoded_img).decode('utf-8')
+            return frame_data
+        else:
+            print("Warning: Failed to encode frame")
+            return ""
+    except Exception as e:
+        print(f"Error encoding frame: {e}")
+        return ""
+
+def base64_to_frame(base64_string):
+    """
+    Convert base64 string back to OpenCV frame
+    
+    Args:
+        base64_string (str): Base64 encoded frame data
+    
+    Returns:
+        numpy.ndarray: OpenCV frame or None if failed
+    """
+    try:
+        # Decode base64 string
+        img_data = base64.b64decode(base64_string)
+        
+        # Convert to numpy array
+        nparr = np.frombuffer(img_data, np.uint8)
+        
+        # Decode image
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        return frame
+    except Exception as e:
+        print(f"Error decoding frame: {e}")
+        return None
+
 def main(video_path, git_directory="git", output_video_path="Media/output_with_detections.mp4", output_dir="output_ocr"):
     """
     Main pipeline function that processes video for pothole detection and grading
@@ -225,7 +278,7 @@ def main(video_path, git_directory="git", output_video_path="Media/output_with_d
     csv_path = os.path.join(output_dir, "pothole_gps_merged.csv")
     with open(csv_path, mode='w', newline='', encoding='utf-8') as csvfile:
         csv_writer = csv.writer(csvfile)
-        csv_writer.writerow(['Frame', 'Date', 'Time', 'Latitude', 'Longitude', 'Pothole_Count', 'Pothole_Grade', 'GPS_Source'])
+        csv_writer.writerow(['Frame', 'Date', 'Time', 'Latitude', 'Longitude', 'Pothole_Count', 'Pothole_Grade', 'GPS_Source', 'Frame_Data'])
         
         frame_count = 0
         while True:
@@ -272,13 +325,17 @@ def main(video_path, git_directory="git", output_video_path="Media/output_with_d
                         # Include GPS source file information
                         gps_source = gps_entry.get('source_file', 'Unknown')
                         
+                        # Convert frame to base64 for storage
+                        print(f"Encoding frame {frame_count} with {pothole_count} potholes...")
+                        frame_data = frame_to_base64(img, quality=75)  # Lower quality to reduce size
+                        
                         csv_writer.writerow([
                             frame_count, date, time,
                             gps_entry['lat'], gps_entry['lon'],
-                            pothole_count, grades_str, gps_source
+                            pothole_count, grades_str, gps_source, frame_data
                         ])
                         
-                        print(f"Frame {frame_count}: {date} {time} | Potholes: {pothole_count} | Grades: {pothole_grades} | GPS Source: {gps_source}")
+                        print(f"Frame {frame_count}: {date} {time} | Potholes: {pothole_count} | Grades: {pothole_grades} | GPS Source: {gps_source} | Frame stored")
                     else:
                         print(f"No GPS match for {date} {time}")
                 else:
