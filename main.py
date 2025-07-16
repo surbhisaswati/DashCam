@@ -1,35 +1,217 @@
 """
 Main Pipeline for Dashcam Pothole Detection and Grading
 Orchestrates all modules: YOLO detection, GPS parsing, grading, and OCR processing
+
+Features:
+- GPU-accelerated YOLO pothole detection using CUDA
+- GPU-accelerated OCR text extraction using CUDA  
+- Automatic fallback to CPU if GPU not available
+- Consolidated GPS data processing from all .git files
+- Smart caching to avoid re-processing GPS data
+- Enhanced CSV output with GPS source tracking
 """
 import os
 import cv2
 import csv
+import glob
 from yolo_detection import PotholeDetector
 from gps_parser import convert_git_to_data, find_matching_gps
 from pothole_grading import grade_pothole, generate_grading_summary
 from ocr_processor import OCRProcessor
 
-def main(video_path, gps_git_path, output_video_path="Media/output_with_detections8.mp4", output_dir="output_ocr"):
+def consolidate_gps_files(git_directory="git", output_dir="output_ocr", consolidated_csv="consolidated_gps_data.csv"):
+    """
+    Consolidate all GPS .git files into one CSV file
+    
+    Args:
+        git_directory (str): Directory containing .git files
+        output_dir (str): Output directory for consolidated CSV
+        consolidated_csv (str): Name of the consolidated CSV file
+    
+    Returns:
+        str: Path to the consolidated CSV file
+    """
+    consolidated_path = os.path.join(output_dir, consolidated_csv)
+    
+    # Check if consolidated file already exists
+    if os.path.exists(consolidated_path):
+        print(f"Consolidated GPS file already exists: {consolidated_path}")
+        return consolidated_path
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Find all .git files
+    git_files = glob.glob(os.path.join(git_directory, "*.git"))
+    
+    if not git_files:
+        print(f"No .git files found in {git_directory}")
+        return None
+    
+    print(f"Found {len(git_files)} .git files. Consolidating GPS data...")
+    
+    all_gps_data = []
+    processed_files = 0
+    
+    # Process each .git file
+    for git_file in sorted(git_files):
+        try:
+            print(f"Processing: {os.path.basename(git_file)}")
+            gps_data = convert_git_to_data(git_file)
+            
+            # Add source file information to each GPS entry
+            for entry in gps_data:
+                entry['source_file'] = os.path.basename(git_file)
+            
+            all_gps_data.extend(gps_data)
+            processed_files += 1
+            
+        except Exception as e:
+            print(f"Error processing {git_file}: {e}")
+            continue
+    
+    # Write consolidated GPS data to CSV
+    if all_gps_data:
+        with open(consolidated_path, mode='w', newline='', encoding='utf-8') as csvfile:
+            fieldnames = ['source_file', 'date', 'time', 'lat', 'lon', 'speed', 'alt']
+            csv_writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            
+            # Write header
+            csv_writer.writeheader()
+            
+            # Write all GPS data
+            csv_writer.writerows(all_gps_data)
+        
+        print(f"Consolidated {len(all_gps_data)} GPS entries from {processed_files} files")
+        print(f"Consolidated GPS data saved to: {consolidated_path}")
+        return consolidated_path
+    else:
+        print("No GPS data found to consolidate")
+        return None
+
+def load_consolidated_gps_data(consolidated_csv_path):
+    """
+    Load GPS data from consolidated CSV file
+    
+    Args:
+        consolidated_csv_path (str): Path to consolidated GPS CSV file
+    
+    Returns:
+        list: List of GPS data dictionaries
+    """
+    gps_data = []
+    
+    if not os.path.exists(consolidated_csv_path):
+        print(f"Consolidated GPS file not found: {consolidated_csv_path}")
+        return gps_data
+    
+    try:
+        with open(consolidated_csv_path, mode='r', newline='', encoding='utf-8') as csvfile:
+            csv_reader = csv.DictReader(csvfile)
+            for row in csv_reader:
+                # Convert string values back to appropriate types
+                if row['lat']:
+                    row['lat'] = float(row['lat'])
+                if row['lon']:
+                    row['lon'] = float(row['lon'])
+                if row['speed']:
+                    row['speed'] = float(row['speed'])
+                if row['alt']:
+                    row['alt'] = float(row['alt'])
+                
+                gps_data.append(row)
+        
+        print(f"Loaded {len(gps_data)} GPS entries from consolidated file")
+        return gps_data
+        
+    except Exception as e:
+        print(f"Error loading consolidated GPS data: {e}")
+        return gps_data
+
+def check_gpu_availability():
+    """
+    Check if GPU is available for acceleration
+    
+    Returns:
+        bool: True if GPU is available, False otherwise
+    """
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
+
+def get_gpu_info():
+    """
+    Get GPU information if available
+    
+    Returns:
+        dict: GPU information or None if not available
+    """
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return {
+                'name': torch.cuda.get_device_name(0),
+                'memory_gb': torch.cuda.get_device_properties(0).total_memory / 1024**3,
+                'available': True
+            }
+    except ImportError:
+        pass
+    
+    return {'available': False}
+
+def main(video_path, git_directory="git", output_video_path="Media/output_with_detections.mp4", output_dir="output_ocr"):
     """
     Main pipeline function that processes video for pothole detection and grading
-    Replicates the exact functionality of merge_ocr_gps_copy copy.py
+    Now uses consolidated GPS data from all .git files with GPU acceleration
     
     Args:
         video_path (str): Path to input video file
-        gps_git_path (str): Path to GPS .git file
+        git_directory (str): Directory containing GPS .git files
         output_video_path (str): Path for output video with detections
         output_dir (str): Directory for output files
     """
+    # Check GPU availability
+    print("🔍 Checking GPU availability...")
+    gpu_info = get_gpu_info()
+    if gpu_info['available']:
+        print(f"✅ GPU Available: {gpu_info['name']} ({gpu_info['memory_gb']:.1f}GB VRAM)")
+    else:
+        print("⚠️ GPU not available, using CPU")
+    
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
     
-    # Load GPS data
-    gps_data = convert_git_to_data(gps_git_path)
+    # Consolidate GPS files (only if not already done)
+    consolidated_gps_path = consolidate_gps_files(git_directory, output_dir)
+    if not consolidated_gps_path:
+        print("Failed to consolidate GPS files. Exiting.")
+        return
     
-    # Initialize components
-    detector = PotholeDetector("Weights/best_26062025.pt", confidence_threshold=0.4)
-    ocr_processor = OCRProcessor(['en'], gpu=False)
+    # Load consolidated GPS data
+    gps_data = load_consolidated_gps_data(consolidated_gps_path)
+    
+    # Initialize components with GPU acceleration
+    gpu_available = check_gpu_availability()
+    
+    detector = PotholeDetector("Weights/best.pt", confidence_threshold=0.4)
+    # Enable GPU for YOLO model if available
+    if gpu_available and hasattr(detector.model, 'to'):
+        try:
+            detector.model.to('cuda')
+            print("✅ YOLO model moved to GPU (CUDA)")
+        except Exception as e:
+            print(f"⚠️ Failed to move YOLO to GPU: {e}")
+    else:
+        print("⚠️ YOLO using CPU")
+    
+    # Initialize OCR processor with GPU acceleration
+    ocr_processor = OCRProcessor(['en'], gpu=gpu_available)
+    if gpu_available:
+        print("✅ OCR processor using GPU (CUDA)")
+    else:
+        print("⚠️ OCR using CPU")
     
     # Initialize video capture and writer
     cap = cv2.VideoCapture(video_path)
@@ -43,7 +225,7 @@ def main(video_path, gps_git_path, output_video_path="Media/output_with_detectio
     csv_path = os.path.join(output_dir, "pothole_gps_merged.csv")
     with open(csv_path, mode='w', newline='', encoding='utf-8') as csvfile:
         csv_writer = csv.writer(csvfile)
-        csv_writer.writerow(['Frame', 'Date', 'Time', 'Latitude', 'Longitude', 'Pothole_Count', 'Pothole_Grade'])
+        csv_writer.writerow(['Frame', 'Date', 'Time', 'Latitude', 'Longitude', 'Pothole_Count', 'Pothole_Grade', 'GPS_Source'])
         
         frame_count = 0
         while True:
@@ -81,19 +263,22 @@ def main(video_path, gps_git_path, output_video_path="Media/output_with_detectio
                 print(f"OCR raw texts (frame {frame_count}): {ocr_texts}")
                 
                 if date and time:
-                    # Find matching GPS data
+                    # Find matching GPS data from consolidated data
                     gps_entry = find_matching_gps(gps_data, date, time)
                     if gps_entry:
                         # Join all grades for this frame
                         grades_str = ", ".join(pothole_grades)
                         
+                        # Include GPS source file information
+                        gps_source = gps_entry.get('source_file', 'Unknown')
+                        
                         csv_writer.writerow([
                             frame_count, date, time,
                             gps_entry['lat'], gps_entry['lon'],
-                            pothole_count, grades_str
+                            pothole_count, grades_str, gps_source
                         ])
                         
-                        print(f"Frame {frame_count}: {date} {time} | Potholes: {pothole_count} | Grades: {pothole_grades}")
+                        print(f"Frame {frame_count}: {date} {time} | Potholes: {pothole_count} | Grades: {pothole_grades} | GPS Source: {gps_source}")
                     else:
                         print(f"No GPS match for {date} {time}")
                 else:
@@ -112,11 +297,12 @@ def main(video_path, gps_git_path, output_video_path="Media/output_with_detectio
     print(f"\nProcessing Complete!")
     print(f"CSV: {csv_path}")
     print(f"Video: {output_video_path}")
+    print(f"Consolidated GPS: {consolidated_gps_path}")
     
     # Generate grading summary
     generate_grading_summary(csv_path, output_dir)
 
 if __name__ == "__main__":
     video_path = "Media/Potholes8.mp4"
-    gps_git_path = "20250528110347_1800.git"
-    main(video_path, gps_git_path)
+    git_directory = "git"  # Directory containing all .git files
+    main(video_path, git_directory)

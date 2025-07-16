@@ -23,7 +23,7 @@ def grade_pothole(width, height, confidence):
     if area < 6000:
         grade = "Low Severity"
         color = (0, 255, 0)  # Green
-    elif area > 6001 and area < 8000:
+    elif area > 6001 and area < 11000:
         grade = "Moderate Severity"
         color = (0, 165, 255)  # Orange
     else:
@@ -85,7 +85,7 @@ def generate_grading_summary(csv_path, output_dir):
         summary_file.write("\nGRADE DEFINITIONS:\n")
         summary_file.write("-" * 17 + "\n")
         summary_file.write("Low Severity: Area < 6000 pixels\n")
-        summary_file.write("Moderate Severity: 6001-8000 pixels\n")
-        summary_file.write("High Severity: Area > 8000 pixels\n")
-    
+        summary_file.write("Moderate Severity: 6001-11000 pixels\n")
+        summary_file.write("High Severity: Area > 11000 pixels\n")
+
     print(f"Grading summary saved to: {summary_path}")

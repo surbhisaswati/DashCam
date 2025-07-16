@@ -48,7 +48,7 @@ def convert_git_to_csv(git_path, csv_path):
 
     print(f"CSV saved: {csv_path}")
 
-input_folder = "/home/smlab/Desktop/dashcam/203gps/tar/tmp"
+input_folder = "./git"
 
 for filename in os.listdir(input_folder):
     if filename.endswith(".git"):

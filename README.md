@@ -13,5 +13,6 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 ```
 3. Download the dependencies
 ```bash
+cd DashCam
 pip install -r requirements.txt
 ```

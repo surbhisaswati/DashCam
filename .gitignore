@@ -16,6 +16,7 @@ Media
 frames_output_100
 sam_road_outputs
 output_ocr/
+git/
 # Model weights (too large for GitHub)
 Weights/best_27062025.pt
 20250528110347_1800.git
